@@ -68,8 +68,9 @@ def translate_to_english(text: str) -> str:
         print(f"Translation failed: {str(e)}")
         return generate_snake_case_function_name(text)
 
+
 def load_questions_from_csv(csv_path: str) -> List[Dict[str, Any]]:
-    """Load questions from a CSV file."""
+    """Load questions from a CSV file with proper character encoding handling."""
     questions = []
 
     try:
@@ -80,19 +81,86 @@ def load_questions_from_csv(csv_path: str) -> List[Dict[str, Any]]:
                 input_params = {}
                 param_descriptions = {}
 
+                # Check if the columns exist and have values
                 if row.get('input_parameter') and row.get('input_description'):
+                    # Split by comma and clean up whitespace
                     params = [p.strip() for p in row['input_parameter'].split(',') if p.strip()]
                     descriptions = [d.strip() for d in row['input_description'].split(',') if d.strip()]
 
-                    # Match parameters with descriptions (up to the number of available descriptions)
-                    for i, param in enumerate(params):
-                        input_params[param] = 'xxx'  # Default value
-                        if i < len(descriptions):
-                            param_descriptions[param] = descriptions[i]
+                    # Common parameter names in English
+                    standard_param_names = [
+                        'stock_code', 'acdate', 'company_name', 'index_code',
+                        'industry_code', 'number', 'weight', 'start_date', 'end_date'
+                    ]
 
+                    # Parameter name mapping (Chinese to English)
+                    param_name_mapping = {
+                        '股票代號': 'stock_code',
+                        '股票號碼': 'stock_code',
+                        '股票代码': 'stock_code',
+                        '股票編號': 'stock_code',
+                        '股票編碼': 'stock_code',
+                        '股號': 'stock_code',
+                        '日期': 'acdate',
+                        '時間': 'acdate',
+                        '時段': 'acdate',
+                        '當日': 'acdate',
+                        '當天': 'acdate',
+                        '收市日': 'acdate',
+                        '公司名稱': 'company_name',
+                        '公司': 'company_name',
+                        '企業名稱': 'company_name',
+                        '企業': 'company_name',
+                        '股票名稱': 'company_name',
+                        '指數代號': 'index_code',
+                        '指數編號': 'index_code',
+                        '指數代码': 'index_code',
+                        '指數': 'index_code',
+                        '行業代號': 'industry_code',
+                        '行業編號': 'industry_code',
+                        '行業類別': 'industry_code',
+                        '行業': 'industry_code',
+                        '數量': 'number',
+                        '數字': 'number',
+                        '個數': 'number',
+                        '數目': 'number',
+                        '數值': 'number',
+                        '權重': 'weight',
+                        '比重': 'weight',
+                        '重量': 'weight',
+                        '開始日期': 'start_date',
+                        '起始日期': 'start_date',
+                        '開始時間': 'start_date',
+                        '結束日期': 'end_date',
+                        '終止日期': 'end_date',
+                        '結束時間': 'end_date'
+                    }
+
+                    # Match parameters with descriptions
+                    for i, param in enumerate(params):
+                        # Try to map Chinese parameter names to English
+                        param_name = param_name_mapping.get(param, param)
+
+                        # If still not in standard names, try to guess
+                        if param_name not in standard_param_names:
+                            # Check if it's already in English
+                            if param in standard_param_names:
+                                param_name = param
+                            else:
+                                # Use the original name as fallback
+                                param_name = param
+
+                        # Add to input parameters with standard names
+                        input_params[param_name] = 'xxx'  # Default value
+
+                        # Add description if available
+                        if i < len(descriptions):
+                            param_descriptions[param_name] = descriptions[i]
+
+                # Build question dictionary with correct column names
                 question = {
                     'question': row.get('question', ''),
-                    'intension': row.get('intention', ''),  # Note: CSV column is "intention" not "intension"
+                    'intension': row.get('intention', '') or row.get('intension', ''),  # Try both spellings
                     'input_parameter': input_params,
                     'param_descriptions': param_descriptions,
                     'sql': row.get('sql', '')
@@ -237,25 +305,25 @@ def format_sql_query_pretty(sql: str) -> str:
         if upper_token in major_keywords:
             if parts and parts[-1] != '\n':
                 parts.append('\n')
-            parts.append(' ' * 8 + token)  # 8 spaces for indentation
+            parts.append(' ' * 2 + token)  # 8 spaces for indentation
 
         # Check for join keywords
         elif upper_token in join_keywords or any(upper_token == j for j in join_keywords):
             if parts and parts[-1] != '\n':
                 parts.append('\n')
-            parts.append(' ' * 12 + token)  # 12 spaces for join indentation
+            parts.append(' ' * 2 + token)  # 12 spaces for join indentation
 
         # Check for condition keywords
         elif upper_token in condition_keywords:
             if parts and parts[-1] != '\n':
                 parts.append('\n')
-            parts.append(' ' * 16 + token)  # 16 spaces for condition indentation
+            parts.append(' ' * 2 + token)  # 16 spaces for condition indentation
 
         # Handle opening parenthesis for subqueries
         elif token == '(' and i + 2 < len(tokens) and tokens[i + 2].upper() == 'SELECT':
             parts.append(token)
             parts.append('\n')
-            parts.append(' ' * 12)  # Extra indentation for subqueries
+            parts.append(' ' * 2)  # Extra indentation for subqueries
 
         # Handle commas - add newlines after commas when not inside parentheses
         elif token == ',':
@@ -263,7 +331,7 @@ def format_sql_query_pretty(sql: str) -> str:
             # Check if we're not inside a function call
             if not is_inside_function(sql, ''.join(parts)):
                 parts.append('\n')
-                parts.append(' ' * 12)  # Indent for comma-separated items
+                parts.append(' ' * 2)  # Indent for comma-separated items
 
         # Default case - just add the token
         else:
@@ -284,14 +352,14 @@ def format_sql_query_pretty(sql: str) -> str:
     for i in range(len(lines)):
         if lines[i].strip():
             if not re.match(r'^\s+', lines[i]):
-                lines[i] = ' ' * 8 + lines[i]
+                lines[i] = ' ' * 2 + lines[i]
             break
 
     formatted_sql = '\n'.join(lines)
 
     # Final adjustment to ensure correct indentation
-    if not formatted_sql.startswith(' ' * 8):
-        formatted_sql = ' ' * 8 + formatted_sql
+    if not formatted_sql.startswith(' ' * 2):
+        formatted_sql = ' ' * 2 + formatted_sql
 
     return formatted_sql
 
@@ -490,9 +558,8 @@ def generate_param_descriptions_dict(questions: List[Dict[str, Any]]) -> str:
     return dict_str
 
 
-
 def generate_query_tools_file(questions: List[Dict[str, Any]], output_file: str = "query_tools.py") -> None:
-    """Generate the query_tools.py file."""
+    """Generate the query_tools.py file with centralized descriptions and parameters."""
     # Create parameter descriptions dictionary from all questions
     param_descriptions_dict = generate_param_descriptions_dict(questions)
 
@@ -502,41 +569,26 @@ Query tools generated from {FINANCIAL_QUERIES_CSV} for financial data queries.
 Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}
 \"\"\"
 
-from typing import Optional, Dict, Any, List, Union
+import inspect
+from typing import Optional, Dict, Any, List, Union, Callable
 from langchain.tools import BaseTool
+from functools import wraps
 
 # Parameter descriptions collected from CSV and defaults
 PARAMETER_DESCRIPTIONS = {param_descriptions_dict}
+
+# Query descriptions - will be used by both functions and tools
+QUERY_DESCRIPTIONS = {{}}
 """
 
-    # Generate functions
     functions = []
     tool_classes = []
-    function_names = []
-
-    # Test Ollama API connection before starting
-    try:
-        url = f"{OLLAMA_API_URL.rstrip('/')}/api/tags"
-        response = requests.get(url)
-        if response.status_code == 200:
-            models = [m.get('name', 'unknown') for m in response.json().get('models', [])]
-            print(f"Ollama API connection successful! Available models: {', '.join(models)}")
-            if OLLAMA_MODEL not in models:
-                print(f"Warning: Model '{OLLAMA_MODEL}' not found in available models. Translation may fail.")
-        else:
-            print(f"Ollama API connection failed with status {response.status_code}. Will use fallback function naming.")
-    except Exception as e:
-        print(f"Ollama API connection test failed: {str(e)}. Will use fallback function naming.")
+    descriptions_map = []
 
     for question in questions:
         # Skip if no intension
         if not question.get('intension'):
             continue
-
-        # Fix the typo in the turnover query
-        if "turnover" in question.get('intension', '').lower():
-            if "acdate>='%{start_date}'" in question.get('sql', ''):
-                question['sql'] = question['sql'].replace("acdate>='%{start_date}'", "acdate>='{start_date}'")
 
         # Generate function name using the Ollama model
         print(f"Translating: {question['intension']}")
@@ -545,36 +597,252 @@ PARAMETER_DESCRIPTIONS = {param_descriptions_dict}
         function_name = f"query_{base_name}"
 
         # Ensure unique function names
-        if function_name in function_names:
+        if function_name in [d[0] for d in descriptions_map]:
             count = 1
-            while f"{function_name}_{count}" in function_names:
+            while f"{function_name}_{count}" in [d[0] for d in descriptions_map]:
                 count += 1
             function_name = f"{function_name}_{count}"
 
-        function_names.append(function_name)
+        # Store the function name and description
+        description = question['intension']
+        descriptions_map.append((function_name, description))
 
-        # Generate function code and tool class
-        function_code = generate_function_definition(question, function_name)
+        # Get parameters from input_parameter
+        params = list(question.get('input_parameter', {}).keys())
+        param_descriptions = {}
+        for param in params:
+            desc = question.get('param_descriptions', {}).get(param, get_default_param_description(param))
+            param_descriptions[param] = desc
+
+        # Generate function and tool class
+        function_code = generate_centralized_function(function_name, params)
         functions.append(function_code)
 
-        tool_class = generate_tool_class(question, function_name)
+        tool_class = generate_centralized_tool_class(function_name, params)
         tool_classes.append(tool_class)
+
+        # Generate the SQL implementation
+        sql_implementation = generate_sql_implementation(question, function_name)
+        functions.append(sql_implementation)
 
         # Add a small delay to avoid overwhelming the API
         time.sleep(0.5)
 
+    # Generate the descriptions dictionary
+    descriptions_dict = "{\n"
+    for func_name, desc in descriptions_map:
+        descriptions_dict += f'    "{func_name}": "{desc}",\n'
+    descriptions_dict += "}"
+
+    # Insert descriptions dictionary after header
+    header = header.replace("QUERY_DESCRIPTIONS = {}", f"QUERY_DESCRIPTIONS = {descriptions_dict}")
+
     # Generate tools list
-    tools_list = generate_tools_list(tool_classes)
+    tools_list = generate_tools_list([cls for cls in tool_classes])
+
+    # Generate parameter utils
+    param_utils = """
+def get_param_description(function_name: str, param_name: str) -> str:
+    \"\"\"Get the description for a parameter of a specific function.\"\"\"
+    # First check if we have specific descriptions for this function and parameter
+    function_params = FUNCTION_PARAMETERS.get(function_name, {})
+    if param_name in function_params:
+        return function_params[param_name]
+
+    # Fall back to general parameter descriptions
+    return PARAMETER_DESCRIPTIONS.get(param_name, f"Parameter {param_name}")
+
+# Dictionary mapping functions to their default parameters
+FUNCTION_PARAMETERS = {}
+"""
+
+    # Generate the shared decorator for documentation
+    decorator_code = """
+def document_query_function(func: Callable) -> Callable:
+    \"\"\"Decorator that adds docstring from QUERY_DESCRIPTIONS.\"\"\"
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    # Get the function name
+    func_name = func.__name__
+
+    # Get the description from our centralized dictionary
+    description = QUERY_DESCRIPTIONS.get(func_name, "No description available")
+
+    # Get parameters for this function
+    sig = inspect.signature(func)
+    params = [p for p in sig.parameters if p != 'self']
+
+    # Format parameter descriptions
+    param_docs = []
+    for param in params:
+        desc = get_param_description(func_name, param)
+        param_docs.append(f"{param} (str): {desc}")
+
+    # Build the complete docstring
+    docstring = f\"\"\"
+    {description}
+
+    Parameters:
+        {chr(10)+'        '.join(param_docs)}
+
+    Returns:
+        str: The query result
+    \"\"\"
+
+    # Assign the docstring to the function
+    wrapper.__doc__ = docstring
+
+    return wrapper
+"""
 
     # Combine all parts
-    file_content = header + '\n\n' + '\n\n'.join(functions) + '\n\n\n# Tool classes\n\n' + '\n\n'.join(tool_classes) + '\n\n' + tools_list
+    file_content = (
+            header +
+            param_utils +
+            decorator_code +
+            '\n\n# SQL Query Implementations\n' +
+            '\n\n'.join(functions) +
+            '\n\n# Tool classes\n\n' +
+            '\n\n'.join(tool_classes) +
+            '\n\n' + tools_list
+    )
 
     # Write to file
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(file_content)
 
-    print(f"Generated {output_file} with {len(functions)} functions and {len(tool_classes)} tool classes.")
+    print(f"Generated {output_file} with {len(functions) // 2} functions and {len(tool_classes)} tool classes.")
 
+
+def generate_centralized_function(function_name: str, params: List[str]) -> str:
+    """Generate a function with centralized documentation."""
+    # Default parameters
+    param_defaults = {
+        'acdate': "'2023-03-01'",
+        'stock_code': "'5'",
+        'company_name': "'中國銀行'",
+        'index_code': "'HSI'",
+        'industry_code': "'BNK'",
+        'number': "'5'",
+        'weight': "'10'",
+        'start_date': "'2023-01-01'",
+        'end_date': "'2023-03-31'",
+    }
+
+    # Generate parameter list
+    param_list = []
+    for param in params:
+        default = param_defaults.get(param, "None")
+        param_list.append(f"{param}: str = {default}")
+
+    # Function template using the decorator
+    function_code = f"""
+@document_query_function
+def {function_name}({', '.join(param_list)}) -> str:
+    \"\"\"This docstring will be replaced by the decorator\"\"\"
+    return {function_name}_impl({', '.join([f"{param}={param}" for param in params])})
+"""
+    return function_code
+
+
+def generate_sql_implementation(question: Dict[str, Any], function_name: str) -> str:
+    """Generate the SQL implementation function with properly formatted SQL."""
+    # Get parameters from input_parameter
+    params = list(question.get('input_parameter', {}).keys())
+
+    # Default parameters
+    param_defaults = {
+        'acdate': "'2023-03-01'",
+        'stock_code': "'5'",
+        'company_name': "'中國銀行'",
+        'index_code': "'HSI'",
+        'industry_code': "'BNK'",
+        'number': "'5'",
+        'weight': "'10'",
+        'start_date': "'2023-01-01'",
+        'end_date': "'2023-03-31'",
+    }
+
+    # Generate parameter list
+    param_list = []
+    for param in params:
+        default = param_defaults.get(param, "None")
+        param_list.append(f"{param}: str = {default}")
+
+    # Format SQL query with pretty formatting
+    raw_sql = question.get('sql', '-- No query provided')
+    formatted_sql = format_sql_query_pretty(raw_sql)
+
+    # Check if it's a numeric parameter that shouldn't be quoted in SQL
+    numeric_params = ['number', 'weight']
+    formatted_params = []
+    for param in params:
+        if param in numeric_params:
+            formatted_params.append(f"{param}=str({param}) if {param} is not None else \"\"")
+        else:
+            formatted_params.append(f"{param}=str({param}) if {param} is not None else \"\"")
+
+    # Function template with nicely formatted SQL
+    function_code = f"""
+def {function_name}_impl({', '.join(param_list)}) -> str:
+    \"\"\"Implementation function with the actual SQL query.\"\"\"
+    query = \"\"\"
+{formatted_sql}
+    \"\"\"
+
+    # Correct replacement using the actual parameter names in curly braces
+    query = query.format(
+        {', '.join(formatted_params)}
+    )
+
+    # Execute query
+    return f"Executing query: {{query}}"
+"""
+    return function_code
+
+
+def generate_centralized_tool_class(function_name: str, params: List[str]) -> str:
+    """Generate a tool class that uses centralized documentation."""
+    class_name = f"{''.join(word.capitalize() for word in function_name.split('_'))}Tool"
+
+    # Default parameters
+    param_defaults = {
+        'acdate': "'2023-03-01'",
+        'stock_code': "'5'",
+        'company_name': "'中國銀行'",
+        'index_code': "'HSI'",
+        'industry_code': "'BNK'",
+        'number': "'5'",
+        'weight': "'10'",
+        'start_date': "'2023-01-01'",
+        'end_date': "'2023-03-31'",
+    }
+
+    # Generate parameter list for _run method
+    param_list = []
+    for param in params:
+        default = param_defaults.get(param, "None")
+        param_list.append(f"{param}: str = {default}")
+
+    # Tool class template
+    tool_code = f"""
+class {class_name}(BaseTool):
+    \"\"\"Tool class for {function_name}.\"\"\"
+
+    name: str = "{function_name}_tool"
+    description: str = QUERY_DESCRIPTIONS.get("{function_name}", "No description available")
+
+    @document_query_function
+    def _run(self, {', '.join(param_list)}) -> str:
+        return {function_name}({', '.join([f"{param}={param}" for param in params])})
+
+    async def _arun(self, {', '.join(param_list)}) -> str:
+        \"\"\"Async version of _run.\"\"\"
+        return self._run({', '.join([f"{param}={param}" for param in params])})
+"""
+    return tool_code
 
 
 
