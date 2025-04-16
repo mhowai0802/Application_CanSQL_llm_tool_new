@@ -156,10 +156,9 @@ def generate_function_definition(question: Dict[str, Any], function_name: str) -
         default = param_defaults.get(param, "None")
         param_list.append(f"{param}: str = {default}")
 
-    # SQL query - format it properly with line breaks and indentation
-    sql_query = question.get('sql', '-- No query provided')
-    # Format SQL query with proper indentation
-    formatted_sql = format_sql_query(sql_query)
+    # Format SQL query with pretty formatting
+    raw_sql = question.get('sql', '-- No query provided')
+    formatted_sql = format_sql_query_pretty(raw_sql)
 
     # Check if it's a numeric parameter that shouldn't be quoted in SQL
     numeric_params = ['number', 'weight']
@@ -171,7 +170,6 @@ def generate_function_definition(question: Dict[str, Any], function_name: str) -
             formatted_params.append(f"{param}=str({param}) if {param} is not None else \"\"")
 
     # Parameter descriptions - use custom descriptions from CSV if available
-    # Format with each parameter on a new line with proper indentation
     param_descriptions = []
     for param in params:
         desc = question.get('param_descriptions', {}).get(param, get_default_param_description(param))
@@ -180,7 +178,7 @@ def generate_function_definition(question: Dict[str, Any], function_name: str) -
     # Join param descriptions with proper indentation
     param_desc_str = "\n        ".join(param_descriptions)
 
-    # Function template
+    # Function template with nicely formatted SQL
     function_code = f"""
 def {function_name}({', '.join(param_list)}) -> str:
     \"\"\"
@@ -207,47 +205,177 @@ def {function_name}({', '.join(param_list)}) -> str:
     return function_code
 
 
-def format_sql_query(sql: str) -> str:
-    """Format SQL query with proper indentation and line breaks."""
-    # Replace any existing indentation
+def format_sql_query_pretty(sql: str) -> str:
+    """Format SQL query in a very pretty, readable way with clear structure."""
+    # Normalize whitespace first
     sql = sql.strip()
+    sql = re.sub(r'\s+', ' ', sql)
 
-    # Split on common SQL keywords to add line breaks
-    keywords = ['SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN',
-                'INNER JOIN']
+    # Define major and minor SQL keywords
+    major_keywords = [
+        'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING',
+        'LIMIT', 'OFFSET', 'WITH'
+    ]
 
-    # Add proper line breaks and indentation
-    formatted_lines = []
-    lines = sql.split('\n')
+    join_keywords = [
+        'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN',
+        'CROSS JOIN', 'NATURAL JOIN'
+    ]
 
-    for line in lines:
-        line = line.strip()
-        # Check if line starts with any keyword
-        starts_with_keyword = False
-        for keyword in keywords:
-            if line.upper().startswith(keyword):
-                formatted_lines.append(f"        {line}")
-                starts_with_keyword = True
-                break
+    condition_keywords = ['AND', 'OR']
 
-        # If it doesn't start with a keyword but contains one, split and format
-        if not starts_with_keyword:
-            found_keyword = False
-            for keyword in keywords:
-                if f" {keyword} " in line.upper() or f" {keyword}\n" in line.upper():
-                    parts = line.split(f" {keyword} ", 1)
-                    if len(parts) == 2:
-                        if parts[0]:
-                            formatted_lines.append(f"        {parts[0]}")
-                        formatted_lines.append(f"        {keyword} {parts[1]}")
-                        found_keyword = True
-                        break
+    # Add proper newlines and indentation - avoid look-behind patterns
+    parts = []
+    tokens = re.split(r'(\s+)', sql)
+    i = 0
 
-            # If no keyword found, just add the line with indentation
-            if not found_keyword:
-                formatted_lines.append(f"        {line}")
+    while i < len(tokens):
+        token = tokens[i]
+        upper_token = token.upper()
 
-    return "\n".join(formatted_lines)
+        # Check for major keywords
+        if upper_token in major_keywords:
+            if parts and parts[-1] != '\n':
+                parts.append('\n')
+            parts.append(' ' * 8 + token)  # 8 spaces for indentation
+
+        # Check for join keywords
+        elif upper_token in join_keywords or any(upper_token == j for j in join_keywords):
+            if parts and parts[-1] != '\n':
+                parts.append('\n')
+            parts.append(' ' * 12 + token)  # 12 spaces for join indentation
+
+        # Check for condition keywords
+        elif upper_token in condition_keywords:
+            if parts and parts[-1] != '\n':
+                parts.append('\n')
+            parts.append(' ' * 16 + token)  # 16 spaces for condition indentation
+
+        # Handle opening parenthesis for subqueries
+        elif token == '(' and i + 2 < len(tokens) and tokens[i + 2].upper() == 'SELECT':
+            parts.append(token)
+            parts.append('\n')
+            parts.append(' ' * 12)  # Extra indentation for subqueries
+
+        # Handle commas - add newlines after commas when not inside parentheses
+        elif token == ',':
+            parts.append(token)
+            # Check if we're not inside a function call
+            if not is_inside_function(sql, ''.join(parts)):
+                parts.append('\n')
+                parts.append(' ' * 12)  # Indent for comma-separated items
+
+        # Default case - just add the token
+        else:
+            parts.append(token)
+
+        i += 1
+
+    # Combine all parts
+    formatted_sql = ''.join(parts)
+
+    # Final cleanup
+    # Fix any extraneous whitespace
+    formatted_sql = re.sub(r'\s+$', '', formatted_sql, flags=re.MULTILINE)
+    formatted_sql = re.sub(r'\n\s*\n', '\n', formatted_sql)
+
+    # Ensure first line is properly indented
+    lines = formatted_sql.split('\n')
+    for i in range(len(lines)):
+        if lines[i].strip():
+            if not re.match(r'^\s+', lines[i]):
+                lines[i] = ' ' * 8 + lines[i]
+            break
+
+    formatted_sql = '\n'.join(lines)
+
+    # Final adjustment to ensure correct indentation
+    if not formatted_sql.startswith(' ' * 8):
+        formatted_sql = ' ' * 8 + formatted_sql
+
+    return formatted_sql
+
+
+def is_inside_function(full_sql, processed_so_far):
+    """Check if the current position is inside a function call by counting parentheses."""
+    stack = []
+    for char in processed_so_far:
+        if char == '(':
+            stack.append(char)
+        elif char == ')' and stack:
+            stack.pop()
+    return len(stack) > 0
+
+
+def format_select_items(select_clause):
+    """Format the items in a SELECT clause for better readability.
+    Simplified version without regex lookbehinds.
+    """
+    # Extract the part between SELECT and FROM
+    match = re.search(r'SELECT\s+(.*?)\s+FROM', select_clause, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return select_clause
+
+    items = match.group(1)
+    # Use a simple comma-based split (this won't handle function calls with commas perfectly)
+    simple_items = items.split(',')
+
+    if len(simple_items) <= 1:
+        return select_clause
+
+    # Format the items with indentation
+    formatted_items = []
+    for item in simple_items:
+        formatted_items.append(' ' * 12 + item.strip())
+
+    # Reconstruct the SELECT clause
+    result = "SELECT\n" + ',\n'.join(formatted_items) + "\nFROM"
+
+    # Replace the original SELECT clause
+    return select_clause.replace(match.group(0), result)
+
+
+def format_select_expressions(select_clause):
+    """Format a SELECT clause with aligned columns for better readability."""
+    # Don't process if it's a simple SELECT *
+    if re.search(r'SELECT\s+\*\s+FROM', select_clause, re.IGNORECASE):
+        return select_clause
+
+    # Extract the expressions between SELECT and FROM
+    match = re.search(r'SELECT\s+(.+?)\s+FROM', select_clause, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return select_clause
+
+    expressions = match.group(1)
+
+    # Split expressions by commas but preserve function commas
+    # This is a simplified approach and may need refinement for complex nested expressions
+    formatted_expressions = []
+    current_expr = ""
+    paren_level = 0
+
+    for char in expressions:
+        if char == '(':
+            paren_level += 1
+            current_expr += char
+        elif char == ')':
+            paren_level -= 1
+            current_expr += char
+        elif char == ',' and paren_level == 0:
+            formatted_expressions.append(current_expr.strip())
+            current_expr = ""
+        else:
+            current_expr += char
+
+    if current_expr.strip():
+        formatted_expressions.append(current_expr.strip())
+
+    # Format the expressions with proper indentation
+    if len(formatted_expressions) > 1:
+        columns = "\n            " + ",\n            ".join(formatted_expressions)
+        return f"SELECT{columns}\n        FROM"
+    else:
+        return select_clause
 
 def generate_tool_class(question: Dict[str, Any], function_name: str) -> str:
     """Generate a tool class for a query function."""
@@ -361,6 +489,8 @@ def generate_param_descriptions_dict(questions: List[Dict[str, Any]]) -> str:
 
     return dict_str
 
+
+
 def generate_query_tools_file(questions: List[Dict[str, Any]], output_file: str = "query_tools.py") -> None:
     """Generate the query_tools.py file."""
     # Create parameter descriptions dictionary from all questions
@@ -444,6 +574,9 @@ PARAMETER_DESCRIPTIONS = {param_descriptions_dict}
         f.write(file_content)
 
     print(f"Generated {output_file} with {len(functions)} functions and {len(tool_classes)} tool classes.")
+
+
+
 
 if __name__ == "__main__":
     # First, check if CSV path is provided via command line (highest priority)
