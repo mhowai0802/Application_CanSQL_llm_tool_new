@@ -197,82 +197,6 @@ def get_default_param_description(param: str) -> str:
     }
     return descriptions.get(param, "Parameter description not available")
 
-
-def generate_function_definition(question: Dict[str, Any], function_name: str) -> str:
-    """Generate a Python function definition for a query."""
-    intension = question['intension']
-
-    # Get parameters from input_parameter
-    params = list(question.get('input_parameter', {}).keys())
-
-    # Default parameters
-    param_defaults = {
-        'acdate': "'2023-03-01'",
-        'stock_code': "'5'",
-        'company_name': "'中國銀行'",
-        'index_code': "'HSI'",
-        'industry_code': "'BNK'",
-        'number': "'5'",
-        'weight': "'10'",
-        'start_date': "'2023-01-01'",
-        'end_date': "'2023-03-31'",
-    }
-
-    # Generate parameter list
-    param_list = []
-    for param in params:
-        default = param_defaults.get(param, "None")
-        param_list.append(f"{param}: str = {default}")
-
-    # Format SQL query with pretty formatting
-    raw_sql = question.get('sql', '-- No query provided')
-    formatted_sql = format_sql_query_pretty(raw_sql)
-
-    # Check if it's a numeric parameter that shouldn't be quoted in SQL
-    numeric_params = ['number', 'weight']
-    formatted_params = []
-    for param in params:
-        if param in numeric_params:
-            formatted_params.append(f"{param}=str({param}) if {param} is not None else \"\"")
-        else:
-            formatted_params.append(f"{param}=str({param}) if {param} is not None else \"\"")
-
-    # Parameter descriptions - use custom descriptions from CSV if available
-    param_descriptions = []
-    for param in params:
-        desc = question.get('param_descriptions', {}).get(param, get_default_param_description(param))
-        param_descriptions.append(f"{param} (str): {desc}")
-
-    # Join param descriptions with proper indentation
-    param_desc_str = "\n        ".join(param_descriptions)
-
-    # Function template with nicely formatted SQL
-    function_code = f"""
-def {function_name}({', '.join(param_list)}) -> str:
-    \"\"\"
-    {intension}
-
-    Parameters:
-        {param_desc_str}
-
-    Returns:
-        str: The query result
-    \"\"\"
-    query = \"\"\"
-{formatted_sql}
-    \"\"\"
-
-    # Correct replacement using the actual parameter names in curly braces
-    query = query.format(
-        {', '.join(formatted_params)}
-    )
-
-    # Execute query
-    return f"Executing query: {{query}}"
-"""
-    return function_code
-
-
 def format_sql_query_pretty(sql: str) -> str:
     """Format SQL query in a very pretty, readable way with clear structure."""
     # Normalize whitespace first
@@ -374,216 +298,94 @@ def is_inside_function(full_sql, processed_so_far):
             stack.pop()
     return len(stack) > 0
 
+def generate_pydantic_schema(function_name: str, params: List[str], param_descriptions: Dict[str, str]) -> Tuple[str, str]:
+    """Generate Pydantic model schema for the tool's arguments."""
+    # Convert function name to PascalCase for the class name
+    class_name = ''.join(word.capitalize() for word in function_name.split('_')) + 'Input'
 
-def format_select_items(select_clause):
-    """Format the items in a SELECT clause for better readability.
-    Simplified version without regex lookbehinds.
-    """
-    # Extract the part between SELECT and FROM
-    match = re.search(r'SELECT\s+(.*?)\s+FROM', select_clause, re.IGNORECASE | re.DOTALL)
-    if not match:
-        return select_clause
+    # Build the class attributes
+    fields = []
+    for param in params:
+        # Get description for this parameter
+        description = param_descriptions.get(param, get_default_param_description(param))
 
-    items = match.group(1)
-    # Use a simple comma-based split (this won't handle function calls with commas perfectly)
-    simple_items = items.split(',')
+        # Determine field type based on parameter name
+        field_type = "int" if param in ['number', 'weight'] else "str"
 
-    if len(simple_items) <= 1:
-        return select_clause
+        # Add Field with description
+        fields.append(f"    {param}: {field_type} = Field(description=\"{description}\")")
 
-    # Format the items with indentation
-    formatted_items = []
-    for item in simple_items:
-        formatted_items.append(' ' * 12 + item.strip())
+    # Build the complete class
+    schema_code = f"""
+class {class_name}(BaseModel):
+{chr(10).join(fields)}
+"""
+    return schema_code, class_name
 
-    # Reconstruct the SELECT clause
-    result = "SELECT\n" + ',\n'.join(formatted_items) + "\nFROM"
-
-    # Replace the original SELECT clause
-    return select_clause.replace(match.group(0), result)
-
-
-def format_select_expressions(select_clause):
-    """Format a SELECT clause with aligned columns for better readability."""
-    # Don't process if it's a simple SELECT *
-    if re.search(r'SELECT\s+\*\s+FROM', select_clause, re.IGNORECASE):
-        return select_clause
-
-    # Extract the expressions between SELECT and FROM
-    match = re.search(r'SELECT\s+(.+?)\s+FROM', select_clause, re.IGNORECASE | re.DOTALL)
-    if not match:
-        return select_clause
-
-    expressions = match.group(1)
-
-    # Split expressions by commas but preserve function commas
-    # This is a simplified approach and may need refinement for complex nested expressions
-    formatted_expressions = []
-    current_expr = ""
-    paren_level = 0
-
-    for char in expressions:
-        if char == '(':
-            paren_level += 1
-            current_expr += char
-        elif char == ')':
-            paren_level -= 1
-            current_expr += char
-        elif char == ',' and paren_level == 0:
-            formatted_expressions.append(current_expr.strip())
-            current_expr = ""
-        else:
-            current_expr += char
-
-    if current_expr.strip():
-        formatted_expressions.append(current_expr.strip())
-
-    # Format the expressions with proper indentation
-    if len(formatted_expressions) > 1:
-        columns = "\n            " + ",\n            ".join(formatted_expressions)
-        return f"SELECT{columns}\n        FROM"
-    else:
-        return select_clause
-
-def generate_tool_class(question: Dict[str, Any], function_name: str) -> str:
-    """Generate a tool class for a query function."""
+def generate_pydantic_tool_function(question: Dict[str, Any], function_name: str) -> str:
+    """Generate a Pydantic-based tool function."""
     intension = question['intension']
-    example_question = question.get('question', '')
-    class_name = f"{''.join(word.capitalize() for word in function_name.split('_'))}Tool"
-
-    # Get parameters from input_parameter
     params = list(question.get('input_parameter', {}).keys())
+    param_descriptions = question.get('param_descriptions', {})
 
-    # Default parameters
-    param_defaults = {
-        'acdate': "'2023-03-01'",
-        'stock_code': "'5'",
-        'company_name': "'中國銀行'",
-        'index_code': "'HSI'",
-        'industry_code': "'BNK'",
-        'number': "'5'",
-        'weight': "'10'",
-        'start_date': "'2023-01-01'",
-        'end_date': "'2023-03-31'",
-    }
+    # Generate Pydantic schema
+    schema_code, schema_class_name = generate_pydantic_schema(function_name, params, param_descriptions)
 
-    # Generate parameter list for _run method
-    param_list = []
-    for param in params:
-        default = param_defaults.get(param, "None")
-        param_list.append(f"{param}: str = {default}")
+    # Get param list for the function
+    param_lines = []
+    for i, param in enumerate(params):
+        param_type = "int" if param in ['number', 'weight'] else "str"
+        # Add comma after each parameter except the last one
+        comma = "," if i < len(params) - 1 else ""
+        param_lines.append(f"    {param}: {param_type}{comma}")
 
-    # Parameter descriptions for docstring - use custom descriptions if available
-    # Format with each parameter on a new line with proper indentation
-    param_descriptions = []
-    for param in params:
-        desc = question.get('param_descriptions', {}).get(param, get_default_param_description(param))
-        param_descriptions.append(f"{param} (str): {desc}")
+    # Format SQL query with pretty formatting
+    raw_sql = question.get('sql', '-- No query provided')
+    formatted_sql = format_sql_query_pretty(raw_sql)
 
-    # Join param descriptions with proper indentation
-    param_desc_str = "\n        ".join(param_descriptions)
+    # Generate the function code
+    function_code = f"""{schema_code}
 
-    # Tool class template with improved formatting
-    tool_code = f"""
-class {class_name}(BaseTool):
+@tool("{function_name}", args_schema={schema_class_name}, return_direct=True)
+def {function_name}(
+{chr(10).join(param_lines)}
+):
     \"\"\"
     {intension}
-
-    Example query: {example_question}
     
-    Parameters:
-        {param_desc_str}
+    Returns:
+        str: The query result
+    \"\"\"
+    query = \"\"\"
+{formatted_sql}
     \"\"\"
 
-    name: str = "{function_name}_tool"
-    description: str = "{intension}"
+    # Format parameters in the query
+    query = query.format(
+        {', '.join([f'{param}=str({param})' for param in params])}
+    )
 
-    def _run(self, {', '.join(param_list)}) -> str:
-        return {function_name}({', '.join([f"{param}={param}" for param in params])})
-
-    async def _arun(self, {', '.join(param_list)}) -> str:
-        \"\"\"Async version of _run.\"\"\"
-        return self._run({', '.join([f"{param}={param}" for param in params])})
+    # Execute query (placeholder for actual execution)
+    return f"Executing query: {{query}}"
 """
-    return tool_code
 
-def generate_tools_list(tool_classes: List[str]) -> str:
-    """Generate code to create a list of all tool instances."""
-    tool_names = [re.search(r'class (\w+)\(BaseTool\)', tool_class).group(1) for tool_class in tool_classes]
-
-    tools_list_code = """
-def get_financial_query_tools() -> List[BaseTool]:
-    \"\"\"Return a list of all financial query tools.\"\"\"
-    return [
-        {tools}
-    ]
-""".format(tools=',\n        '.join([f"{name}()" for name in tool_names]))
-
-    return tools_list_code
-
-def generate_param_descriptions_dict(questions: List[Dict[str, Any]]) -> str:
-    """Generate a dictionary of all parameter descriptions found in the CSV."""
-    all_descriptions = {}
-
-    # First collect custom descriptions from CSV
-    for question in questions:
-        if 'param_descriptions' in question:
-            for param, desc in question['param_descriptions'].items():
-                if param not in all_descriptions:
-                    all_descriptions[param] = desc
-
-    # Then add default descriptions for common parameters if not already described
-    default_descriptions = {
-        'acdate': "The accounting date in YYYY-MM-DD format",
-        'stock_code': "The stock code or ticker symbol",
-        'company_name': "The company name in Chinese",
-        'index_code': "The index code (e.g., HSI for Hang Seng Index)",
-        'industry_code': "The industry code (e.g., BNK for banking, INS for insurance)",
-        'number': "The number of stocks to return",
-        'weight': "The weight threshold percentage",
-        'start_date': "The start date in YYYY-MM-DD format",
-        'end_date': "The end date in YYYY-MM-DD format",
-    }
-
-    for param, desc in default_descriptions.items():
-        if param not in all_descriptions:
-            all_descriptions[param] = desc
-
-    # Format as Python dictionary string
-    dict_str = "{\n"
-    for param, desc in sorted(all_descriptions.items()):
-        dict_str += f'    "{param}": "{desc}",\n'
-    dict_str += "}"
-
-    return dict_str
-
+    return function_code
 
 def generate_query_tools_file(questions: List[Dict[str, Any]], output_file: str = "query_tools.py") -> None:
-    """Generate the query_tools.py file with centralized descriptions and parameters."""
-    # Create parameter descriptions dictionary from all questions
-    param_descriptions_dict = generate_param_descriptions_dict(questions)
-
-    # Header with info about the source CSV
+    """Generate the query_tools.py file with Pydantic-based tool functions."""
+    # Header
     header = f"""\"\"\"
 Query tools generated from {FINANCIAL_QUERIES_CSV} for financial data queries.
 Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}
 \"\"\"
 
-import inspect
-from typing import Optional, Dict, Any, List, Union, Callable
-from langchain.tools import BaseTool
-from functools import wraps
+from typing import Dict, List, Any, Optional
+from pydantic import BaseModel, Field
+from langchain.tools import tool
 
-# Parameter descriptions collected from CSV and defaults
-PARAMETER_DESCRIPTIONS = {param_descriptions_dict}
-
-# Query descriptions - will be used by both functions and tools
-QUERY_DESCRIPTIONS = {{}}
 """
 
-    functions = []
-    tool_classes = []
-    descriptions_map = []
+    tool_functions = []
 
     for question in questions:
         # Skip if no intension
@@ -593,257 +395,29 @@ QUERY_DESCRIPTIONS = {{}}
         # Generate function name using the Ollama model
         print(f"Translating: {question['intension']}")
         base_name = translate_to_english(question['intension'])
-        # Add query_ prefix to all function names
-        function_name = f"query_{base_name}"
 
         # Ensure unique function names
-        if function_name in [d[0] for d in descriptions_map]:
+        if base_name in [func.split('\n@tool("')[1].split('"')[0] for func in tool_functions if '\n@tool("' in func]:
             count = 1
-            while f"{function_name}_{count}" in [d[0] for d in descriptions_map]:
+            while f"{base_name}_{count}" in [func.split('\n@tool("')[1].split('"')[0] for func in tool_functions if '\n@tool("' in func]:
                 count += 1
-            function_name = f"{function_name}_{count}"
+            base_name = f"{base_name}_{count}"
 
-        # Store the function name and description
-        description = question['intension']
-        descriptions_map.append((function_name, description))
-
-        # Get parameters from input_parameter
-        params = list(question.get('input_parameter', {}).keys())
-        param_descriptions = {}
-        for param in params:
-            desc = question.get('param_descriptions', {}).get(param, get_default_param_description(param))
-            param_descriptions[param] = desc
-
-        # Generate function and tool class
-        function_code = generate_centralized_function(function_name, params)
-        functions.append(function_code)
-
-        tool_class = generate_centralized_tool_class(function_name, params)
-        tool_classes.append(tool_class)
-
-        # Generate the SQL implementation
-        sql_implementation = generate_sql_implementation(question, function_name)
-        functions.append(sql_implementation)
+        # Generate the Pydantic tool function
+        tool_function = generate_pydantic_tool_function(question, base_name)
+        tool_functions.append(tool_function)
 
         # Add a small delay to avoid overwhelming the API
         time.sleep(0.5)
 
-    # Generate the descriptions dictionary
-    descriptions_dict = "{\n"
-    for func_name, desc in descriptions_map:
-        descriptions_dict += f'    "{func_name}": "{desc}",\n'
-    descriptions_dict += "}"
-
-    # Insert descriptions dictionary after header
-    header = header.replace("QUERY_DESCRIPTIONS = {}", f"QUERY_DESCRIPTIONS = {descriptions_dict}")
-
-    # Generate tools list
-    tools_list = generate_tools_list([cls for cls in tool_classes])
-
-    # Generate parameter utils
-    param_utils = """
-def get_param_description(function_name: str, param_name: str) -> str:
-    \"\"\"Get the description for a parameter of a specific function.\"\"\"
-    # First check if we have specific descriptions for this function and parameter
-    function_params = FUNCTION_PARAMETERS.get(function_name, {})
-    if param_name in function_params:
-        return function_params[param_name]
-
-    # Fall back to general parameter descriptions
-    return PARAMETER_DESCRIPTIONS.get(param_name, f"Parameter {param_name}")
-
-# Dictionary mapping functions to their default parameters
-FUNCTION_PARAMETERS = {}
-"""
-
-    # Generate the shared decorator for documentation
-    decorator_code = """
-def document_query_function(func: Callable) -> Callable:
-    \"\"\"Decorator that adds docstring from QUERY_DESCRIPTIONS.\"\"\"
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        return func(*args, **kwargs)
-
-    # Get the function name
-    func_name = func.__name__
-
-    # Get the description from our centralized dictionary
-    description = QUERY_DESCRIPTIONS.get(func_name, "No description available")
-
-    # Get parameters for this function
-    sig = inspect.signature(func)
-    params = [p for p in sig.parameters if p != 'self']
-
-    # Format parameter descriptions
-    param_docs = []
-    for param in params:
-        desc = get_param_description(func_name, param)
-        param_docs.append(f"{param} (str): {desc}")
-
-    # Build the complete docstring
-    docstring = f\"\"\"
-    {description}
-
-    Parameters:
-        {chr(10)+'        '.join(param_docs)}
-
-    Returns:
-        str: The query result
-    \"\"\"
-
-    # Assign the docstring to the function
-    wrapper.__doc__ = docstring
-
-    return wrapper
-"""
-
     # Combine all parts
-    file_content = (
-            header +
-            param_utils +
-            decorator_code +
-            '\n\n# SQL Query Implementations\n' +
-            '\n\n'.join(functions) +
-            '\n\n# Tool classes\n\n' +
-            '\n\n'.join(tool_classes) +
-            '\n\n' + tools_list
-    )
+    file_content = header + '\n\n'.join(tool_functions)
 
     # Write to file
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(file_content)
 
-    print(f"Generated {output_file} with {len(functions) // 2} functions and {len(tool_classes)} tool classes.")
-
-
-def generate_centralized_function(function_name: str, params: List[str]) -> str:
-    """Generate a function with centralized documentation."""
-    # Default parameters
-    param_defaults = {
-        'acdate': "'2023-03-01'",
-        'stock_code': "'5'",
-        'company_name': "'中國銀行'",
-        'index_code': "'HSI'",
-        'industry_code': "'BNK'",
-        'number': "'5'",
-        'weight': "'10'",
-        'start_date': "'2023-01-01'",
-        'end_date': "'2023-03-31'",
-    }
-
-    # Generate parameter list
-    param_list = []
-    for param in params:
-        default = param_defaults.get(param, "None")
-        param_list.append(f"{param}: str = {default}")
-
-    # Function template using the decorator
-    function_code = f"""
-@document_query_function
-def {function_name}({', '.join(param_list)}) -> str:
-    \"\"\"This docstring will be replaced by the decorator\"\"\"
-    return {function_name}_impl({', '.join([f"{param}={param}" for param in params])})
-"""
-    return function_code
-
-
-def generate_sql_implementation(question: Dict[str, Any], function_name: str) -> str:
-    """Generate the SQL implementation function with properly formatted SQL."""
-    # Get parameters from input_parameter
-    params = list(question.get('input_parameter', {}).keys())
-
-    # Default parameters
-    param_defaults = {
-        'acdate': "'2023-03-01'",
-        'stock_code': "'5'",
-        'company_name': "'中國銀行'",
-        'index_code': "'HSI'",
-        'industry_code': "'BNK'",
-        'number': "'5'",
-        'weight': "'10'",
-        'start_date': "'2023-01-01'",
-        'end_date': "'2023-03-31'",
-    }
-
-    # Generate parameter list
-    param_list = []
-    for param in params:
-        default = param_defaults.get(param, "None")
-        param_list.append(f"{param}: str = {default}")
-
-    # Format SQL query with pretty formatting
-    raw_sql = question.get('sql', '-- No query provided')
-    formatted_sql = format_sql_query_pretty(raw_sql)
-
-    # Check if it's a numeric parameter that shouldn't be quoted in SQL
-    numeric_params = ['number', 'weight']
-    formatted_params = []
-    for param in params:
-        if param in numeric_params:
-            formatted_params.append(f"{param}=str({param}) if {param} is not None else \"\"")
-        else:
-            formatted_params.append(f"{param}=str({param}) if {param} is not None else \"\"")
-
-    # Function template with nicely formatted SQL
-    function_code = f"""
-def {function_name}_impl({', '.join(param_list)}) -> str:
-    \"\"\"Implementation function with the actual SQL query.\"\"\"
-    query = \"\"\"
-{formatted_sql}
-    \"\"\"
-
-    # Correct replacement using the actual parameter names in curly braces
-    query = query.format(
-        {', '.join(formatted_params)}
-    )
-
-    # Execute query
-    return f"Executing query: {{query}}"
-"""
-    return function_code
-
-
-def generate_centralized_tool_class(function_name: str, params: List[str]) -> str:
-    """Generate a tool class that uses centralized documentation."""
-    class_name = f"{''.join(word.capitalize() for word in function_name.split('_'))}Tool"
-
-    # Default parameters
-    param_defaults = {
-        'acdate': "'2023-03-01'",
-        'stock_code': "'5'",
-        'company_name': "'中國銀行'",
-        'index_code': "'HSI'",
-        'industry_code': "'BNK'",
-        'number': "'5'",
-        'weight': "'10'",
-        'start_date': "'2023-01-01'",
-        'end_date': "'2023-03-31'",
-    }
-
-    # Generate parameter list for _run method
-    param_list = []
-    for param in params:
-        default = param_defaults.get(param, "None")
-        param_list.append(f"{param}: str = {default}")
-
-    # Tool class template
-    tool_code = f"""
-class {class_name}(BaseTool):
-    \"\"\"Tool class for {function_name}.\"\"\"
-
-    name: str = "{function_name}_tool"
-    description: str = QUERY_DESCRIPTIONS.get("{function_name}", "No description available")
-
-    @document_query_function
-    def _run(self, {', '.join(param_list)}) -> str:
-        return {function_name}({', '.join([f"{param}={param}" for param in params])})
-
-    async def _arun(self, {', '.join(param_list)}) -> str:
-        \"\"\"Async version of _run.\"\"\"
-        return self._run({', '.join([f"{param}={param}" for param in params])})
-"""
-    return tool_code
-
+    print(f"Generated {output_file} with {len(tool_functions)} Pydantic-based tool functions.")
 
 
 if __name__ == "__main__":
