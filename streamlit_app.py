@@ -90,9 +90,15 @@ def get_system_prompt():
         return "Error loading system prompt."
 
 
-def chat_with_llm(prompt, messages):
-    """Send a chat request to the API."""
+def chat_with_llm(prompt, system_prompt):
+    """Send a chat request to the API without chat history."""
     try:
+        # Only send the current prompt and system prompt, no chat history
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+
         response = requests.post(
             f"{API_URL}/chat",
             json={"prompt": prompt, "messages": messages}
@@ -135,6 +141,10 @@ def main():
         st.info(f"Using model: {model_info.get('model')}")
         st.info(f"API URL: {model_info.get('api_url')}")
 
+        # Add a notice about stateless operation
+        st.warning(
+            "⚠️ This app operates in stateless mode. Each query is independent and doesn't consider previous conversation context.")
+
         st.subheader("System Prompt")
         system_prompt = st.text_area("System Prompt", st.session_state.system_prompt, height=300)
         if system_prompt != st.session_state.system_prompt:
@@ -156,7 +166,7 @@ def main():
             print(f"Error displaying tools in sidebar: {str(e)}")
             st.error(f"Error loading tools: {str(e)}")
 
-    # Display chat history
+    # Display chat history (stored only in frontend)
     print(f"Displaying {len(st.session_state.messages)} messages in chat history")
     for message in st.session_state.messages:
         role = message["role"]
@@ -190,34 +200,20 @@ def main():
 
     if prompt:
         print(f"Received user prompt: {prompt}")
-        # Add user message to chat
+        # Add user message to chat history (frontend only)
         st.session_state.messages.append({"role": "user", "content": prompt})
 
         # Display user message
         with st.chat_message("user"):
             st.write(prompt)
 
-        # Prepare messages for LLM
-        messages = [
-            {"role": "system", "content": st.session_state.system_prompt}
-        ]
-
-        # Add chat history (limited to last 10 exchanges)
-        for msg in st.session_state.messages[-10:]:
-            if msg["role"] in ["user", "assistant"]:
-                messages.append({"role": msg["role"], "content": msg["content"]})
-
-        print(f"Prepared {len(messages)} messages for LLM")
-
-        # Get LLM response and tool selection
+        # Get LLM response and tool selection (stateless - no chat history)
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                print("Calling LLM for response")
-                print("====================================")
-                print(prompt, messages)
-                print("====================================")
+                print("Calling LLM for response (stateless)")
 
-                response_data = chat_with_llm(prompt, messages)
+                # Call backend with only current prompt and system prompt
+                response_data = chat_with_llm(prompt, st.session_state.system_prompt)
 
                 if "error" in response_data:
                     st.error(response_data["error"])
@@ -247,8 +243,8 @@ def main():
                 else:
                     print("No tool selected")
 
-        # Add assistant message to chat history
-        print("Adding assistant message to chat history")
+        # Add assistant message to chat history (frontend only)
+        print("Adding assistant message to frontend chat history")
         assistant_message = {
             "role": "assistant",
             "content": response_content,
