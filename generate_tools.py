@@ -11,9 +11,84 @@ from typing import List, Dict, Any, Tuple
 import time
 import sys
 
-# Import configuration from config.py
-from backend.config import OLLAMA_API_URL, OLLAMA_MODEL, FINANCIAL_QUERIES_CSV
-print(f"Using configuration from config.py:")
+# Import configuration from config_generate_tools.py
+try:
+    from config_generate_tools import (
+        OLLAMA_API_URL, OLLAMA_MODEL, FINANCIAL_QUERIES_CSV,
+        STANDARD_PARAM_NAMES, PARAM_NAME_MAPPING, DEFAULT_PARAM_DESCRIPTIONS
+    )
+    print("Using configuration from config_generate_tools.py")
+except ImportError:
+    # Fallback to old config path if needed
+    try:
+        from backend.config import OLLAMA_API_URL, OLLAMA_MODEL, FINANCIAL_QUERIES_CSV
+        print("Using configuration from backend.config")
+        # Define defaults for mappings that may not be in the original config
+        STANDARD_PARAM_NAMES = [
+            'stock_code', 'acdate', 'company_name', 'index_code',
+            'industry_code', 'number', 'weight', 'start_date', 'end_date'
+        ]
+        # Parameter name mapping (Chinese to English)
+        PARAM_NAME_MAPPING = {
+            '股票代號': 'stock_code',
+            '股票號碼': 'stock_code',
+            '股票代码': 'stock_code',
+            '股票編號': 'stock_code',
+            '股票編碼': 'stock_code',
+            '股號': 'stock_code',
+            '日期': 'acdate',
+            '時間': 'acdate',
+            '時段': 'acdate',
+            '當日': 'acdate',
+            '當天': 'acdate',
+            '收市日': 'acdate',
+            '公司名稱': 'company_name',
+            '公司': 'company_name',
+            '企業名稱': 'company_name',
+            '企業': 'company_name',
+            '股票名稱': 'company_name',
+            '指數代號': 'index_code',
+            '指數編號': 'index_code',
+            '指數代码': 'index_code',
+            '指數': 'index_code',
+            '行業代號': 'industry_code',
+            '行業編號': 'industry_code',
+            '行業類別': 'industry_code',
+            '行業': 'industry_code',
+            '數量': 'number',
+            '數字': 'number',
+            '個數': 'number',
+            '數目': 'number',
+            '數值': 'number',
+            '權重': 'weight',
+            '比重': 'weight',
+            '重量': 'weight',
+            '開始日期': 'start_date',
+            '起始日期': 'start_date',
+            '開始時間': 'start_date',
+            '結束日期': 'end_date',
+            '終止日期': 'end_date',
+            '結束時間': 'end_date'
+        }
+        DEFAULT_PARAM_DESCRIPTIONS = {
+            'acdate': "The accounting date in YYYY-MM-DD format",
+            'stock_code': "The stock code or ticker symbol",
+            'company_name': "The company name in Chinese",
+            'index_code': "The index code (e.g., HSI for Hang Seng Index)",
+            'industry_code': "The industry code (e.g., BNK for banking, INS for insurance)",
+            'number': "The number of stocks to return",
+            'weight': "The weight threshold percentage",
+            'start_date': "The start date in YYYY-MM-DD format",
+            'end_date': "The end date in YYYY-MM-DD format",
+        }
+    except ImportError:
+        # Default values if no config is found
+        from config_generate_tools import (
+            OLLAMA_API_URL, OLLAMA_MODEL, FINANCIAL_QUERIES_CSV,
+            STANDARD_PARAM_NAMES, PARAM_NAME_MAPPING, DEFAULT_PARAM_DESCRIPTIONS
+        )
+        print("Using default configuration values")
+
 print(f"  - OLLAMA_API_URL: {OLLAMA_API_URL}")
 print(f"  - OLLAMA_MODEL: {OLLAMA_MODEL}")
 print(f"  - FINANCIAL_QUERIES_CSV: {FINANCIAL_QUERIES_CSV}")
@@ -86,64 +161,15 @@ def load_questions_from_csv(csv_path: str) -> List[Dict[str, Any]]:
                     params = [p.strip() for p in row['input_parameter'].split(',') if p.strip()]
                     descriptions = [d.strip() for d in row['input_description'].split(',') if d.strip()]
 
-                    # Common parameter names in English
-                    standard_param_names = [
-                        'stock_code', 'acdate', 'company_name', 'index_code',
-                        'industry_code', 'number', 'weight', 'start_date', 'end_date'
-                    ]
-
-                    # Parameter name mapping (Chinese to English)
-                    param_name_mapping = {
-                        '股票代號': 'stock_code',
-                        '股票號碼': 'stock_code',
-                        '股票代码': 'stock_code',
-                        '股票編號': 'stock_code',
-                        '股票編碼': 'stock_code',
-                        '股號': 'stock_code',
-                        '日期': 'acdate',
-                        '時間': 'acdate',
-                        '時段': 'acdate',
-                        '當日': 'acdate',
-                        '當天': 'acdate',
-                        '收市日': 'acdate',
-                        '公司名稱': 'company_name',
-                        '公司': 'company_name',
-                        '企業名稱': 'company_name',
-                        '企業': 'company_name',
-                        '股票名稱': 'company_name',
-                        '指數代號': 'index_code',
-                        '指數編號': 'index_code',
-                        '指數代码': 'index_code',
-                        '指數': 'index_code',
-                        '行業代號': 'industry_code',
-                        '行業編號': 'industry_code',
-                        '行業類別': 'industry_code',
-                        '行業': 'industry_code',
-                        '數量': 'number',
-                        '數字': 'number',
-                        '個數': 'number',
-                        '數目': 'number',
-                        '數值': 'number',
-                        '權重': 'weight',
-                        '比重': 'weight',
-                        '重量': 'weight',
-                        '開始日期': 'start_date',
-                        '起始日期': 'start_date',
-                        '開始時間': 'start_date',
-                        '結束日期': 'end_date',
-                        '終止日期': 'end_date',
-                        '結束時間': 'end_date'
-                    }
-
                     # Match parameters with descriptions
                     for i, param in enumerate(params):
                         # Try to map Chinese parameter names to English
-                        param_name = param_name_mapping.get(param, param)
+                        param_name = PARAM_NAME_MAPPING.get(param, param)
 
                         # If still not in standard names, try to guess
-                        if param_name not in standard_param_names:
+                        if param_name not in STANDARD_PARAM_NAMES:
                             # Check if it's already in English
-                            if param in standard_param_names:
+                            if param in STANDARD_PARAM_NAMES:
                                 param_name = param
                             else:
                                 # Use the original name as fallback
@@ -183,18 +209,7 @@ def generate_snake_case_function_name(intension: str) -> str:
 
 def get_default_param_description(param: str) -> str:
     """Get default description for a parameter."""
-    descriptions = {
-        'acdate': "The accounting date in YYYY-MM-DD format",
-        'stock_code': "The stock code or ticker symbol",
-        'company_name': "The company name in Chinese",
-        'index_code': "The index code (e.g., HSI for Hang Seng Index)",
-        'industry_code': "The industry code (e.g., BNK for banking, INS for insurance)",
-        'number': "The number of stocks to return",
-        'weight': "The weight threshold percentage",
-        'start_date': "The start date in YYYY-MM-DD format",
-        'end_date': "The end date in YYYY-MM-DD format",
-    }
-    return descriptions.get(param, "Parameter description not available")
+    return DEFAULT_PARAM_DESCRIPTIONS.get(param, "Parameter description not available")
 
 def format_sql_query_pretty(sql: str) -> str:
     """Format SQL query in a very pretty, readable way with clear structure."""
