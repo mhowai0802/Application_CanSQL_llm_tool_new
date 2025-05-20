@@ -1,29 +1,30 @@
 """
 Query tools generated from financial.csv for financial data queries.
-Generated on: 2025-04-23 10:10:53
+Generated on: 2025-05-20 15:31:44
 """
+
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 from langchain.tools import tool
 
 
-class GetHighestLowestClosePricesByDateStockNumberInput(BaseModel):
+class GetHighestLowestClosePriceByDateStockNumberInput(BaseModel):
     stock_code: str = Field(description="股票代碼")
     acdate: str = Field(description="日期")
 
 
-@tool("get_highest_lowest_close_prices_by_date_stock_number",
-      args_schema=GetHighestLowestClosePricesByDateStockNumberInput, return_direct=True)
-def get_highest_lowest_close_prices_by_date_stock_number(
-        stock_code: str,
-        acdate: str
+@tool("get_highest_lowest_close_prices_by_date_stock_number", args_schema=GetHighestLowestClosePriceByDateStockNumberInput, return_direct=True)
+def get_highest_lowest_close_price_by_date_stock_number(
+    stock_code: str,
+    acdate: str
 ):
     """
     查詢在xx日期，美股xxxx股票號的最高價、最低價及收市價
-
+    
     Returns:
         str: The query result
     """
+    print(stock_code, acdate)
     query = """
   select t1.ACDATE,t1.code,t1.HIGH,t1.LOW,t1.CLOSE
   from SRCIFF.TB_FTS_DAILYPRICEINFO_US t1
@@ -40,19 +41,20 @@ def get_highest_lowest_close_prices_by_date_stock_number(
     return f"Executing query: {query}"
 
 
-class GetTechnicalTypeByDateStockInput(BaseModel):
+
+class FindStockTechnologyByDateInput(BaseModel):
     stock_code: str = Field(description="股票代碼")
     acdate: str = Field(description="日期")
 
 
-@tool("get_technical_type_by_date_stock", args_schema=GetTechnicalTypeByDateStockInput, return_direct=True)
-def get_technical_type_by_date_stock(
-        stock_code: str,
-        acdate: str
+@tool("find_stock_technology_by_date", args_schema=FindStockTechnologyByDateInput, return_direct=True)
+def find_stock_technology_by_date(
+    stock_code: str,
+    acdate: str
 ):
     """
     查詢在xx日期，某個xxxx股票號的技術形態
-
+    
     Returns:
         str: The query result
     """
@@ -75,19 +77,20 @@ def get_technical_type_by_date_stock(
     return f"Executing query: {query}"
 
 
-class GetStockPremiumInput(BaseModel):
+
+class FindPredictionRateOnDateAndStockInput(BaseModel):
     company_name: str = Field(description="股票代碼")
     acdate: str = Field(description="日期")
 
 
-@tool("get_stock_premium", args_schema=GetStockPremiumInput, return_direct=True)
-def get_stock_premium(
-        company_name: str,
-        acdate: str
+@tool("find_prediction_rate_on_date_and_stock", args_schema=FindPredictionRateOnDateAndStockInput, return_direct=True)
+def find_prediction_rate_on_date_and_stock(
+    company_name: str,
+    acdate: str
 ):
     """
     查詢在xx日期，某個xx股票(公司名)的預測市盈率
-
+    
     Returns:
         str: The query result
     """
@@ -109,21 +112,22 @@ def get_stock_premium(
     return f"Executing query: {query}"
 
 
-class GetTopStocksByDateAndWeightInput(BaseModel):
+
+class GetTopStocksByDateInput(BaseModel):
     index_code: str = Field(description="股票指數")
     number: int = Field(description="指數中的成分股的數量")
     acdate: str = Field(description="日期")
 
 
-@tool("get_top_stocks_by_date_and_weight", args_schema=GetTopStocksByDateAndWeightInput, return_direct=True)
-def get_top_stocks_by_date_and_weight(
-        index_code: str,
-        number: int,
-        acdate: str
+@tool("get_top_stocks_by_date", args_schema=GetTopStocksByDateInput, return_direct=True)
+def get_top_stocks_by_date(
+    index_code: str,
+    number: int,
+    acdate: str
 ):
     """
     查詢在xx日期，xx指數成分股預測收益率最高的n只股票
-
+    
     Returns:
         str: The query result
     """
@@ -149,22 +153,22 @@ def get_top_stocks_by_date_and_weight(
     return f"Executing query: {query}"
 
 
-class GetStockHoldingByDateIndustryRatioInput(BaseModel):
+
+class FindStocksByDateIndustryInput(BaseModel):
     industry_code: str = Field(description="行業對應代碼")
     index_code: str = Field(description="股票指數代碼")
     acdate: str = Field(description="日期")
 
 
-@tool("get_stock_holding_by_date_industry_ratio", args_schema=GetStockHoldingByDateIndustryRatioInput,
-      return_direct=True)
-def get_stock_holding_by_date_industry_ratio(
-        industry_code: str,
-        index_code: str,
-        acdate: str
+@tool("find_stocks_by_date_industry", args_schema=FindStocksByDateIndustryInput, return_direct=True)
+def find_stocks_by_date_industry(
+    industry_code: str,
+    index_code: str,
+    acdate: str
 ):
     """
     查詢在xx日期，xx行業在xx指數有多少隻股票，以及比重
-
+    
     Returns:
         str: The query result
     """
@@ -189,19 +193,20 @@ def get_stock_holding_by_date_industry_ratio(
     return f"Executing query: {query}"
 
 
-class WorstPerformStockByDateInput(BaseModel):
+
+class WorstStockPerformanceOnDateInput(BaseModel):
     index_code: str = Field(description="股票指數代碼")
     acdate: str = Field(description="日期")
 
 
-@tool("worst_perform_stock_by_date", args_schema=WorstPerformStockByDateInput, return_direct=True)
-def worst_perform_stock_by_date(
-        index_code: str,
-        acdate: str
+@tool("worst_stock_performance_on_date", args_schema=WorstStockPerformanceOnDateInput, return_direct=True)
+def worst_stock_performance_on_date(
+    index_code: str,
+    acdate: str
 ):
     """
     查詢在xx日期，xxx指數表現最差的股票
-
+    
     Returns:
         str: The query result
     """
@@ -229,21 +234,22 @@ def worst_perform_stock_by_date(
     return f"Executing query: {query}"
 
 
-class FindLowestPbHkStockInput(BaseModel):
+
+class FindMinHkStockInput(BaseModel):
     industry_code: str = Field(description="行業對應代碼")
     acdate: str = Field(description="日期")
     number: int = Field(description="篩選股票數量")
 
 
-@tool("find_lowest_pb_hk_stock", args_schema=FindLowestPbHkStockInput, return_direct=True)
-def find_lowest_pb_hk_stock(
-        industry_code: str,
-        acdate: str,
-        number: int
+@tool("find_min_hk_stock", args_schema=FindMinHkStockInput, return_direct=True)
+def find_min_hk_stock(
+    industry_code: str,
+    acdate: str,
+    number: int
 ):
     """
     查詢xx日期，xx行業PB/ratio最低的n只香港股票
-
+    
     Returns:
         str: The query result
     """
@@ -267,21 +273,22 @@ def find_lowest_pb_hk_stock(
     return f"Executing query: {query}"
 
 
-class FindWeightByDateInput(BaseModel):
+
+class FindBlockWeightInput(BaseModel):
     index_code: str = Field(description="股票指數代碼")
     acdate: str = Field(description="日期")
     weight: int = Field(description="權重")
 
 
-@tool("find_weight_by_date", args_schema=FindWeightByDateInput, return_direct=True)
-def find_weight_by_date(
-        index_code: str,
-        acdate: str,
-        weight: int
+@tool("find_block_weight", args_schema=FindBlockWeightInput, return_direct=True)
+def find_block_weight(
+    index_code: str,
+    acdate: str,
+    weight: int
 ):
     """
     查詢xx日期，在xx指數中比重超過n%的板塊
-
+    
     Returns:
         str: The query result
     """
@@ -308,21 +315,22 @@ def find_weight_by_date(
     return f"Executing query: {query}"
 
 
-class GetPriceRangeChangeInput(BaseModel):
+
+class GetStockPriceChangeInput(BaseModel):
     start_date: str = Field(description="開始日期")
     end_date: str = Field(description="結束日期")
     index_code: str = Field(description="股票指數代碼")
 
 
-@tool("get_price_range_change", args_schema=GetPriceRangeChangeInput, return_direct=True)
-def get_price_range_change(
-        start_date: str,
-        end_date: str,
-        index_code: str
+@tool("get_stock_price_change", args_schema=GetStockPriceChangeInput, return_direct=True)
+def get_stock_price_change(
+    start_date: str,
+    end_date: str,
+    index_code: str
 ):
     """
     查詢xx時間段，xx指數的點數變化
-
+    
     Returns:
         str: The query result
     """
@@ -343,21 +351,22 @@ def get_price_range_change(
     return f"Executing query: {query}"
 
 
-class SearchTimeRangeStockReportInput(BaseModel):
+
+class GetPeriodStockReturnInput(BaseModel):
     start_date: str = Field(description="開始日期")
     end_date: str = Field(description="結束日期")
     stock_code: str = Field(description="股票代碼")
 
 
-@tool("search_time_range_stock_report", args_schema=SearchTimeRangeStockReportInput, return_direct=True)
-def search_time_range_stock_report(
-        start_date: str,
-        end_date: str,
-        stock_code: str
+@tool("get_period_stock_return", args_schema=GetPeriodStockReturnInput, return_direct=True)
+def get_period_stock_return(
+    start_date: str,
+    end_date: str,
+    stock_code: str
 ):
     """
     查詢xx時間段，xx股票號的回報率
-
+    
     Returns:
         str: The query result
     """
@@ -398,21 +407,22 @@ def search_time_range_stock_report(
     return f"Executing query: {query}"
 
 
-class GetStockTurnoverByDateRangeInput(BaseModel):
+
+class GetTurnoverByTimeRangeInput(BaseModel):
     start_date: str = Field(description="開始日期")
     end_date: str = Field(description="結束日期")
     stock_code: str = Field(description="股票代碼")
 
 
-@tool("get_stock_turnover_by_date_range", args_schema=GetStockTurnoverByDateRangeInput, return_direct=True)
-def get_stock_turnover_by_date_range(
-        start_date: str,
-        end_date: str,
-        stock_code: str
+@tool("get_turnover_by_time_range", args_schema=GetTurnoverByTimeRangeInput, return_direct=True)
+def get_turnover_by_time_range(
+    start_date: str,
+    end_date: str,
+    stock_code: str
 ):
     """
     查詢xx時間段，xx股票的turnover
-
+    
     Returns:
         str: The query result
     """

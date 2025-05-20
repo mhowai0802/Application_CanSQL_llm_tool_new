@@ -5,12 +5,12 @@ Tests a list of predefined questions and outputs in UnifiedGenSQLResponse format
 import json
 import traceback
 import uuid
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 # Import the necessary functions from main.py
 try:
     from main import get_ollama_response, chat_with_llm, execute_tool, parse_llm_response
-    from query_tools import (
+    from backend.query_tools import (
         get_highest_lowest_close_prices_by_date_stock_number,
         get_technical_type_by_date_stock,
         get_stock_premium,
@@ -23,8 +23,8 @@ try:
         search_time_range_stock_report,
         get_stock_turnover_by_date_range
     )
-    from prompt import get_formatted_financial_assistant_prompt
-    from config import OLLAMA_API_URL, OLLAMA_MODEL
+    from backend.prompt import get_formatted_financial_assistant_prompt
+    from backend.config import OLLAMA_API_URL, OLLAMA_MODEL
 except ImportError as e:
     print(f"Error importing required modules: {e}")
     print("Make sure your main.py, query_tools.py, prompt.py, and config.py are accessible.")

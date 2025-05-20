@@ -4,16 +4,15 @@ Uses Ollama to translate Chinese intensions to English function names.
 """
 
 import re
-import json
 import requests
 import csv
 import os
-from typing import List, Dict, Any, Set, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 import time
 import sys
 
 # Import configuration from config.py
-from config import OLLAMA_API_URL, OLLAMA_MODEL, FINANCIAL_QUERIES_CSV
+from backend.config import OLLAMA_API_URL, OLLAMA_MODEL, FINANCIAL_QUERIES_CSV
 print(f"Using configuration from config.py:")
 print(f"  - OLLAMA_API_URL: {OLLAMA_API_URL}")
 print(f"  - OLLAMA_MODEL: {OLLAMA_MODEL}")
@@ -371,7 +370,7 @@ def {function_name}(
 
     return function_code
 
-def generate_query_tools_file(questions: List[Dict[str, Any]], output_file: str = "query_tools.py") -> None:
+def generate_query_tools_file(questions: List[Dict[str, Any]], output_file: str = "backend/query_tools.py") -> None:
     """Generate the query_tools.py file with Pydantic-based tool functions."""
     # Header
     header = f"""\"\"\"
